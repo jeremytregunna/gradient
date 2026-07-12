@@ -152,6 +152,7 @@ async function findCommand(args: string[]): Promise<void> {
 
 async function logCommand(args: string[]): Promise<void> {
   const oneline = args.includes("--oneline");
+  const json = args.includes("--json");
   const maxCount = valueAfter(args, "--max") ?? "20";
 
   // Get list of commits.
@@ -168,14 +169,27 @@ async function logCommand(args: string[]): Promise<void> {
     return;
   }
 
-  const lines: string[] = [];
+  const entries: Array<{ commit: string; artifact: any }> = [];
 
   for (const commit of commits) {
-    // Try to read the note.
     const artifact = readNote(commit, process.cwd());
     if (!artifact) continue;
+    entries.push({ commit: commit.slice(0, 7), artifact });
+  }
 
-    const commitShort = commit.slice(0, 7);
+  if (entries.length === 0) {
+    console.log("no Gradient notes found for recent commits");
+    return;
+  }
+
+  if (json) {
+    console.log(JSON.stringify(entries, null, 2));
+    return;
+  }
+
+  const lines: string[] = [];
+
+  for (const { commit: commitShort, artifact } of entries) {
     const facts = artifact.hunks
       .map((h) => `${h.path}:${h.facts.join(",")}`)
       .join("; ");
