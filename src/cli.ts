@@ -1,5 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { readFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { distill } from "./distill.ts";
@@ -223,7 +224,7 @@ async function notesReadCommand(args: string[]): Promise<void> {
 
 async function notesPushCommand(args: string[]): Promise<void> {
   const remote = valueAfter(args, "--remote");
-  if (pushNotes(remote, process.cwd())) {
+  if (pushNotes(process.cwd(), remote)) {
     console.log(`Pushed Gradient notes${remote ? ` to ${remote}` : ""}`);
   } else {
     throw new Error(`failed to push Gradient notes`);
@@ -232,7 +233,7 @@ async function notesPushCommand(args: string[]): Promise<void> {
 
 async function notesFetchCommand(args: string[]): Promise<void> {
   const remote = valueAfter(args, "--remote") ?? "origin";
-  if (fetchNotes(remote, process.cwd())) {
+  if (fetchNotes(process.cwd(), remote)) {
     console.log(`Fetched Gradient notes from ${remote}`);
   } else {
     throw new Error(`failed to fetch Gradient notes from ${remote}`);
@@ -301,7 +302,11 @@ function resolveCommitish(value: string | undefined): string | undefined {
   return result.status === 0 ? result.stdout.trim() : value;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isMainModule(): boolean {
+  return Boolean(process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href);
+}
+
+if (isMainModule()) {
   main(process.argv.slice(2)).catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

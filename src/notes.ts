@@ -35,17 +35,14 @@ export function readNote(commit: string, cwd: string): GradientArtifact | undefi
   }
 }
 
-export function pushNotes(remote?: string, cwd: string): boolean {
-  const args = ["push"];
-  if (remote) {
-    args.push(remote);
-  }
-  args.push(NOTES_REF);
+export function pushNotes(cwd: string, remote?: string): boolean {
+  const remoteName = remote ?? "origin";
+  const args = ["push", remoteName, `${NOTES_REF}:${NOTES_REF}`];
   const result = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
   return result.status === 0;
 }
 
-export function fetchNotes(remote?: string, cwd: string): boolean {
+export function fetchNotes(cwd: string, remote?: string): boolean {
   const remoteName = remote ?? "origin";
   const result = spawnSync(
     "git",

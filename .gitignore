@@ -1,2 +1,5 @@
 .gradient/
 .pi/
+node_modules/
+dist/
+*.tgz

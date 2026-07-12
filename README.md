@@ -2,7 +2,18 @@
 
 Gradient projects factual agent trace events onto Git diff hunks so reviewers can see where to spend attention.
 
-This repository is currently a TypeScript prototype. It has no runtime dependencies and can run on Node's built-in TypeScript type stripping:
+This repository is currently a TypeScript prototype. It has no runtime dependencies.
+
+Build and run the installable CLI locally:
+
+```sh
+npm run build
+npm pack
+npm install -g ./gradient-0.1.0.tgz
+gradient --help
+```
+
+During development, it can also run on Node's built-in TypeScript type stripping:
 
 ```sh
 npm run demo
