@@ -73,6 +73,24 @@ export async function findArtifactForCommit(commit: string, cwd = process.cwd())
   return undefined;
 }
 
+export async function findLatestArtifact(cwd = process.cwd()): Promise<string | undefined> {
+  const entries = await readArtifactIndex(cwd);
+  if (entries.length === 0) return undefined;
+  const latest = entries[entries.length - 1];
+
+  for (const dir of storageDirs(cwd)) {
+    const path = join(dir, "artifacts", latest.artifact);
+    try {
+      await access(path, constants.R_OK);
+      return path;
+    } catch {
+      // Try the next possible storage location.
+    }
+  }
+
+  return undefined;
+}
+
 async function indexArtifact(cwd: string, dir: string, artifact: GradientArtifact, path: string): Promise<void> {
   const entries = await readArtifactIndex(cwd);
   entries.push({
@@ -95,7 +113,7 @@ function indexPaths(cwd: string): string[] {
   return storageDirs(cwd).map((dir) => join(dir, "index.json"));
 }
 
-function storageDirs(cwd: string): string[] {
+export function storageDirs(cwd = process.cwd()): string[] {
   return [...new Set([storageDir(cwd), join(cwd, ".gradient")])];
 }
 

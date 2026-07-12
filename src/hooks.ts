@@ -1,7 +1,8 @@
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { findArtifactForCommit, readArtifact, storageDir } from "./storage.ts";
+import { findArtifactForCommit, readArtifact, readArtifactIndex, storageDir, storageDirs } from "./storage.ts";
 import { writeNote } from "./notes.ts";
 
 const HOOKS = ["post-commit", "post-rewrite", "pre-push"] as const;
@@ -31,7 +32,27 @@ export async function handleHook(hook: string | undefined, cwd: string, hookArgs
   await mkdir(join(gradientDir, "hooks"), { recursive: true });
 
   const head = gitHead(cwd) ?? "unknown-head";
-  const artifact = await findArtifactForCommit(head, cwd);
+  let artifact = await findArtifactForCommit(head, cwd);
+
+  // post-commit: if no artifact for the new HEAD, fall back to the most recent one.
+  // The artifact was distilled before the commit, so its head is the previous HEAD.
+  if (!artifact) {
+    const entries = await readArtifactIndex(cwd);
+    const latest = entries.at(-1);
+    if (latest) {
+      for (const dir of storageDirs(cwd)) {
+        const path = join(dir, "artifacts", latest.artifact);
+        try {
+          await access(path, constants.R_OK);
+          artifact = path;
+          break;
+        } catch {
+          // Try the next possible storage location.
+        }
+      }
+    }
+  }
+
   const event = {
     hook,
     head,
