@@ -10,6 +10,12 @@ test("installHooks installs repo-local hooks when global hooksPath is unusable",
   const cwd = await mkdtemp(join(tmpdir(), "gradient-hooks-"));
   assert.equal(spawnSync("git", ["init"], { cwd }).status, 0);
 
+  // Make the default hooks path unusable so the fallback kicks in
+  assert.equal(
+    spawnSync("git", ["config", "--local", "core.hooksPath", "/nonexistent/gradient-hooks"], { cwd }).status,
+    0
+  );
+
   await installHooks(cwd, "/tmp/gradient-cli.ts");
 
   const hooksPath = spawnSync("git", ["config", "--local", "--get", "core.hooksPath"], {

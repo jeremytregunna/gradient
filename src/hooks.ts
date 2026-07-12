@@ -53,7 +53,8 @@ function gitHooksDir(cwd: string): string | undefined {
     encoding: "utf8"
   });
   if (result.status !== 0) return undefined;
-  return result.stdout.trim();
+  const value = result.stdout.trim();
+  return value.startsWith("/") ? value : join(cwd, value);
 }
 
 async function installableHooksDir(cwd: string): Promise<string | undefined> {
