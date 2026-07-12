@@ -21,42 +21,55 @@ export async function main(argv: string[]): Promise<void> {
       printHelp();
       return;
     case "distill":
+      if (args.includes("--help")) { printHelpFor("distill"); return; }
       await distillCommand(args);
       return;
     case "show":
+      if (args.includes("--help")) { printHelpFor("show"); return; }
       await showCommand(args);
       return;
     case "annotate-diff":
+      if (args.includes("--help")) { printHelpFor("annotate-diff"); return; }
       await annotateDiffCommand(args);
       return;
     case "index":
+      if (args.includes("--help")) { printHelpFor("index"); return; }
       await indexCommand();
       return;
     case "find":
+      if (args.includes("--help")) { printHelpFor("find"); return; }
       await findCommand(args);
       return;
     case "install-hooks":
+      if (args.includes("--help")) { printHelpFor("install-hooks"); return; }
       await installHooks(process.cwd(), new URL(import.meta.url).pathname);
       return;
     case "log":
+      if (args.includes("--help")) { printHelpFor("log"); return; }
       await logCommand(args);
       return;
     case "notes-write":
+      if (args.includes("--help")) { printHelpFor("notes-write"); return; }
       await notesWriteCommand(args);
       return;
     case "notes-read":
+      if (args.includes("--help")) { printHelpFor("notes-read"); return; }
       await notesReadCommand(args);
       return;
     case "notes-push":
+      if (args.includes("--help")) { printHelpFor("notes-push"); return; }
       await notesPushCommand(args);
       return;
     case "notes-fetch":
+      if (args.includes("--help")) { printHelpFor("notes-fetch"); return; }
       await notesFetchCommand(args);
       return;
     case "hook":
+      if (args.includes("--help")) { printHelpFor("hook"); return; }
       await handleHook(args[0], process.cwd(), args.slice(1));
       return;
     case "demo":
+      if (args.includes("--help")) { printHelpFor("demo"); return; }
       await demoCommand();
       return;
     default:
@@ -290,14 +303,151 @@ Usage:
   gradient annotate-diff --commit sha --diff diff.patch
   gradient index
   gradient find [commit]
-  gradient log [--oneline] [--max N]
+  gradient log [--oneline] [--json] [--max N]
   gradient install-hooks
   gradient notes-write [--commit sha]
   gradient notes-read [commit]
   gradient notes-push [--remote name]
   gradient notes-fetch [--remote name]
   gradient demo
+
+Commands:
+  distill            Distill agent trace events + a diff into a Gradient artifact
+  show               Display an artifact or the artifact for a commit
+  annotate-diff      Annotate a unified diff with Gradient facts from an artifact
+  index              Show the artifact index as JSON
+  find               Find the artifact (note or local) for a commit
+  log                Show Gradient notes for recent commits
+  install-hooks      Install Git hooks for automatic notes writing/pushing
+  notes-write        Write the current artifact as a Git note on HEAD
+  notes-read         Read and display a Git note for a commit
+  notes-push         Push the Gradient notes ref to a remote
+  notes-fetch        Fetch the Gradient notes ref from a remote
+  demo               Run a self-contained demo
+
+Use "gradient <command> --help" for details on a command.
 `);
+}
+
+function printHelpFor(command: string): void {
+  const help: Record<string, string> = {
+    "distill": `Distill agent trace events and a unified diff into a Gradient artifact.
+
+Usage:
+  gradient distill --events events.json --diff diff.patch [--run-id id] [--base sha] [--head sha]
+
+Options:
+  --events   Path to a JSON file of GradientEvent objects
+  --diff     Path to a unified diff (.patch)
+  --run-id   Optional run identifier (default: run-<timestamp>)
+  --base     Optional base commit SHA
+  --head     Optional target commit SHA (default: HEAD)
+
+Output:
+  Path to the written artifact JSON file.`,
+    "show": `Display a Gradient artifact in human-readable format.
+
+Usage:
+  gradient show <artifact.json | commit>
+
+If given a .json path, reads the artifact directly.
+If given a commit SHA, checks Git notes first, then local storage.
+
+Output:
+  Rendered artifact with hunks, facts, and evidence.`,
+    "annotate-diff": `Annotate a unified diff with Gradient facts.
+
+Usage:
+  gradient annotate-diff --artifact artifact.json --diff diff.patch
+  gradient annotate-diff --commit sha --diff diff.patch
+
+Options:
+  --artifact  Path to a Gradient artifact JSON file
+  --commit    Commit SHA (reads artifact from Git notes or local storage)
+  --diff      Path to a unified diff (.patch)
+
+Output:
+  Unified diff with inline @@ FACT: fact-list @@ annotations.`,
+    "index": `Show the artifact index.
+
+Output:
+  JSON array of indexed artifacts with runId, head, and path.`,
+    "find": `Find the artifact source for a commit.
+
+Usage:
+  gradient find [commit]
+
+Defaults to HEAD. Outputs "note:<commit>" if backed by a Git note,
+or the local file path if in storage.`,
+    "log": `Show Gradient notes for recent commits.
+
+Usage:
+  gradient log [--oneline] [--json] [--max N]
+
+Options:
+  --oneline  One line per commit (file:fact pairs)
+  --json     Output as JSON array of {commit, artifact}
+  --max N    Show at most N commits (default: 20)
+
+Output:
+  Human-readable or JSON summary of Gradient facts on recent commits.`,
+    "install-hooks": `Install Git hooks for automatic Gradient notes.
+
+Hooks:
+  post-commit  Writes the latest artifact as a Git note
+  pre-push     Pushes the notes ref to the remote
+
+The hooks chain to any existing hooks in the same directory.`,
+    "notes-write": `Write the current artifact as a Git note.
+
+Usage:
+  gradient notes-write [--commit sha]
+
+Options:
+  --commit  Target commit (default: HEAD)
+
+Requires an artifact in local storage for the given commit.`,
+    "notes-read": `Read and display a Git note for a commit.
+
+Usage:
+  gradient notes-read [commit]
+
+Defaults to HEAD.`,
+    "notes-push": `Push the Gradient notes ref to a remote.
+
+Usage:
+  gradient notes-push [--remote name]
+
+Options:
+  --remote  Remote name (default: origin)`,
+    "notes-fetch": `Fetch the Gradient notes ref from a remote.
+
+Usage:
+  gradient notes-fetch [--remote name]
+
+Options:
+  --remote  Remote name (default: origin)`,
+      "hook": `Handle a Git hook event.
+
+Usage:
+  gradient hook <post-commit|post-rewrite|pre-push> [args...]
+
+This is invoked by the installed Git hooks, not used directly.
+  post-commit  Writes the latest artifact as a Git note.
+  post-rewrite Rewrites notes for rewritten commits.
+  pre-push     Pushes the notes ref to the remote.`,
+    "demo": `Run a self-contained demo.
+
+Produces a sample artifact from synthetic events and a diff,
+then renders it to stdout.`,
+  };
+
+  const text = help[command];
+  if (text) {
+    console.log(`gradient ${command} --help\n\n${text}`);
+  } else {
+    console.log(`Unknown command: ${command}. Use "gradient --help" for all commands.`);
+  }
 }
 
 function valueAfter(args: string[], flag: string): string | undefined {
