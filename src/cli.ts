@@ -167,13 +167,18 @@ async function logCommand(args: string[]): Promise<void> {
   const oneline = args.includes("--oneline");
   const json = args.includes("--json");
   const maxCount = valueAfter(args, "--max") ?? "20";
+  const factFilter = valueAfter(args, "--fact");
+  const noFact = valueAfter(args, "--no-fact");
+  const pathFilter = valueAfter(args, "--path");
+  const runIdFilter = valueAfter(args, "--run");
+  const sinceFilter = valueAfter(args, "--since");
+  const authorFilter = valueAfter(args, "--author");
 
   // Get list of commits.
-  const logResult = spawnSync(
-    "git",
-    ["log", `--max-count=${maxCount}`, "--format=%H"],
-    { encoding: "utf8" }
-  );
+  const logArgs: string[] = ["log", `--max-count=${maxCount}`, "--format=%H"];
+  if (sinceFilter) logArgs.push(`--since=${sinceFilter}`);
+  if (authorFilter) logArgs.push(`--author=${authorFilter}`);
+  const logResult = spawnSync("git", logArgs, { encoding: "utf8" });
   if (logResult.status !== 0) throw new Error("failed to read git log");
 
   const commits = logResult.stdout.trim().split("\n").filter(Boolean);
@@ -187,7 +192,33 @@ async function logCommand(args: string[]): Promise<void> {
   for (const commit of commits) {
     const artifact = readNote(commit, process.cwd());
     if (!artifact) continue;
-    entries.push({ commit: commit.slice(0, 7), artifact });
+
+    // Filter hunks.
+    let filteredHunks = artifact.hunks;
+    if (factFilter) {
+      filteredHunks = filteredHunks.filter(
+        (h: any) => h.facts && h.facts.includes(factFilter)
+      );
+    }
+    if (noFact) {
+      filteredHunks = filteredHunks.filter(
+        (h: any) => h.facts && !h.facts.includes(noFact)
+      );
+    }
+    if (pathFilter) {
+      filteredHunks = filteredHunks.filter(
+        (h: any) => h.path === pathFilter || h.path.startsWith(pathFilter)
+      );
+    }
+    if (runIdFilter && artifact.runId !== runIdFilter) continue;
+
+    // Skip commits with no matching hunks.
+    if (filteredHunks.length === 0) continue;
+
+    entries.push({
+      commit: commit.slice(0, 7),
+      artifact: { ...artifact, hunks: filteredHunks },
+    });
   }
 
   if (entries.length === 0) {
@@ -303,7 +334,7 @@ Usage:
   gradient annotate-diff --commit sha --diff diff.patch
   gradient index
   gradient find [commit]
-  gradient log [--oneline] [--json] [--max N]
+  gradient log [--oneline] [--json] [--max N] [--fact F] [--path P] [--run R]
   gradient install-hooks
   gradient notes-write [--commit sha]
   gradient notes-read [commit]
@@ -382,12 +413,18 @@ or the local file path if in storage.`,
     "log": `Show Gradient notes for recent commits.
 
 Usage:
-  gradient log [--oneline] [--json] [--max N]
+  gradient log [--oneline] [--json] [--max N] [--fact F] [--no-fact F] [--path P] [--run R] [--since D] [--author A]
 
 Options:
-  --oneline  One line per commit (file:fact pairs)
-  --json     Output as JSON array of {commit, artifact}
-  --max N    Show at most N commits (default: 20)
+  --oneline     One line per commit (file:fact pairs)
+  --json        Output as JSON array of {commit, artifact}
+  --max N       Show at most N commits (default: 20)
+  --fact F      Only show hunks that have fact F
+  --no-fact F   Exclude hunks that have fact F
+  --path P      Only show hunks in files matching P
+  --run R       Only show artifacts from run R
+  --since D     Only show commits since date D (git-compatible)
+  --author A    Only show commits by author A (git-compatible)
 
 Output:
   Human-readable or JSON summary of Gradient facts on recent commits.`,
