@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { main } from "../src/cli.ts";
+import { writeNote } from "../src/notes.ts";
 
 test("cli distill, show, annotate-diff, index, and find work together", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gradient-cli-"));
@@ -72,6 +74,34 @@ test("cli distill, show, annotate-diff, index, and find work together", async ()
 
   const artifact = JSON.parse(await readFile(artifactPath, "utf8"));
   assert.equal(artifact.hunks[0].path, "src/a.ts");
+});
+
+test("find reports note-backed artifacts consistently", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gradient-cli-note-"));
+  assert.equal(spawnSync("git", ["init"], { cwd }).status, 0);
+  assert.equal(spawnSync("git", ["config", "user.email", "test@test.com"], { cwd }).status, 0);
+  assert.equal(spawnSync("git", ["config", "user.name", "Test"], { cwd }).status, 0);
+  assert.equal(spawnSync("git", ["config", "commit.gpgSign", "false"], { cwd }).status, 0);
+  await writeFile(join(cwd, "a.txt"), "hello\n", "utf8");
+  assert.equal(spawnSync("git", ["add", "."], { cwd }).status, 0);
+  assert.equal(spawnSync("git", ["commit", "-m", "initial"], { cwd }).status, 0);
+  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).stdout.trim();
+
+  assert.ok(
+    writeNote(
+      {
+        gradientVersion: "0.1",
+        runId: "note-find",
+        head,
+        generatedAt: new Date().toISOString(),
+        hunks: []
+      },
+      cwd
+    )
+  );
+
+  const found = await runCli(["find", "HEAD"], cwd);
+  assert.equal(found.trim(), `note:${head}`);
 });
 
 async function runCli(args: string[], cwd: string): Promise<string> {

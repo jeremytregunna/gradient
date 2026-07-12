@@ -36,6 +36,7 @@ export function distill(events: GradientEvent[], diff: UnifiedDiff, options: Dis
     const fileSearches = searches.filter((event) => !event.paths || event.paths.includes(path));
 
     for (const hunk of file.hunks) {
+      const isNewFile = file.oldPath === "/dev/null";
       const newRange = { start: hunk.newStart, end: hunk.newStart + Math.max(hunk.newLines - 1, 0) };
       const overlappingWrites = fileWrites.filter((event) => !event.range || rangesOverlap(event.range, newRange));
       const firstEditAt = minTime(overlappingWrites.map((event) => event.time));
@@ -52,7 +53,8 @@ export function distill(events: GradientEvent[], diff: UnifiedDiff, options: Dis
         searchBeforeEdit,
         testsAfterEdit,
         editCount: overlappingWrites.length,
-        provenance
+        provenance,
+        isNewFile
       });
 
       hunks.push({
@@ -91,10 +93,15 @@ function factsFor(input: {
   testsAfterEdit: string[];
   editCount: number;
   provenance: "requested" | "model-initiated" | "mechanical";
+  isNewFile: boolean;
 }): GradientFact[] {
   const facts: GradientFact[] = [input.provenance];
 
-  facts.push(input.readBeforeEdit ? "file-read-before-edit" : "blind-edit");
+  if (input.isNewFile) {
+    facts.push("new-file");
+  } else {
+    facts.push(input.readBeforeEdit ? "file-read-before-edit" : "blind-edit");
+  }
   if (input.searchBeforeEdit) facts.push("searched-before-edit");
   facts.push(input.testsAfterEdit.length > 0 ? "tested-after-edit" : "unchecked-after-edit");
 

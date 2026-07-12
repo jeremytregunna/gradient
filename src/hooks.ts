@@ -1,7 +1,8 @@
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { findArtifactForCommit, storageDir } from "./storage.ts";
+import { findArtifactForCommit, readArtifact, storageDir } from "./storage.ts";
+import { writeNote } from "./notes.ts";
 
 const HOOKS = ["post-commit", "post-rewrite", "pre-push"] as const;
 
@@ -20,13 +21,14 @@ export async function installHooks(cwd: string, cliPath: string): Promise<void> 
   console.log(`Installed Gradient hooks in ${hooksDir}`);
 }
 
-export async function handleHook(hook: string | undefined, cwd: string): Promise<void> {
+export async function handleHook(hook: string | undefined, cwd: string, hookArgs: string[] = []): Promise<void> {
   if (!hook || !HOOKS.includes(hook as (typeof HOOKS)[number])) {
     throw new Error("hook requires one of: post-commit, post-rewrite, pre-push");
   }
 
   const dir = storageDir(cwd);
-  await mkdir(join(dir, "hooks"), { recursive: true });
+  const gradientDir = dir.startsWith("/") ? dir : join(cwd, dir);
+  await mkdir(join(gradientDir, "hooks"), { recursive: true });
 
   const head = gitHead(cwd) ?? "unknown-head";
   const artifact = await findArtifactForCommit(head, cwd);
@@ -37,8 +39,32 @@ export async function handleHook(hook: string | undefined, cwd: string): Promise
     time: new Date().toISOString()
   };
 
-  const path = join(dir, "hooks", `${Date.now()}-${hook}.json`);
+  const path = join(gradientDir, "hooks", `${Date.now()}-${hook}.json`);
   await writeFile(path, `${JSON.stringify(event, null, 2)}\n`, "utf8");
+
+  // post-commit: write the artifact as a git note (for local/offline review)
+  if (hook === "post-commit" && artifact) {
+    const art = await readArtifact(artifact);
+    writeNote(art, cwd);
+  }
+
+  // pre-push: push notes ref so CI can read them
+  if (hook === "pre-push") {
+    const remote = hookArgs[0] ?? "origin";
+    const result = spawnSync(
+      "git",
+      ["push", remote, "refs/notes/gradient"],
+      { cwd, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
+    );
+    if (result.status !== 0) {
+      // Non-fatal — notes push shouldn't block the main push.
+      // Log it for debugging.
+      const errPath = join(gradientDir, "hooks", `${Date.now()}-pre-push-notes-fail.json`);
+      await writeFile(errPath, `${JSON.stringify({
+        hook, remote, stderr: result.stderr?.trim(), stdout: result.stdout?.trim(), time: new Date().toISOString()
+      }, null, 2)}\n`, "utf8");
+    }
+  }
 }
 
 function gitHooksDir(cwd: string): string | undefined {

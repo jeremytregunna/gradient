@@ -87,7 +87,8 @@ export type GradientFact =
   | "rewritten"
   | "model-initiated"
   | "requested"
-  | "mechanical";
+  | "mechanical"
+  | "new-file";
 
 export interface HunkProjection {
   commit?: string;

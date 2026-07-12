@@ -69,3 +69,28 @@ test("marks lockfile hunks as mechanical", () => {
 
   assert.ok(artifact.hunks[0]?.facts.includes("mechanical"));
 });
+
+test("marks newly created files as new-file instead of blind-edit", () => {
+  const runId = "test-run";
+  const events: GradientEvent[] = [
+    { type: "user.request", runId, time: "2026-07-12T17:59:00.000Z", text: "Create src/new-module.ts" },
+    { type: "file.write", runId, time: "2026-07-12T18:01:00.000Z", path: "src/new-module.ts", range: { start: 1, end: 10 } },
+    { type: "command.run", runId, time: "2026-07-12T18:02:00.000Z", cmd: "npm test", exitCode: 0 }
+  ];
+  const diff = parseUnifiedDiff(`diff --git a/src/new-module.ts b/src/new-module.ts
+--- /dev/null
++++ b/src/new-module.ts
+@@ -0,0 +1,3 @@
++export function hello() {
++  return "world";
++}
+`);
+
+  const artifact = distill(events, diff, { runId });
+
+  assert.equal(artifact.hunks.length, 1);
+  assert.ok(artifact.hunks[0]?.facts.includes("new-file"));
+  assert.ok(!artifact.hunks[0]?.facts.includes("blind-edit"));
+  assert.ok(artifact.hunks[0]?.facts.includes("requested"));
+  assert.ok(artifact.hunks[0]?.facts.includes("tested-after-edit"));
+});

@@ -10,7 +10,8 @@ const LABELS: Record<GradientFact, string> = {
   "rewritten": "rewritten",
   "model-initiated": "model-initiated",
   "requested": "requested",
-  "mechanical": "mechanical"
+  "mechanical": "mechanical",
+  "new-file": "new file"
 };
 
 export function renderArtifact(artifact: GradientArtifact): string {

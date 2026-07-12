@@ -1,0 +1,108 @@
+name: Gradient PR annotations
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  gradient-annotate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Gradient notes
+        run: |
+          git fetch origin refs/notes/gradient:refs/notes/gradient || true
+
+      - name: Check for Gradient notes
+        id: check
+        run: |
+          # Get commits in the PR
+          COMMITS=$(git rev-list ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+          if [ -z "$COMMITS" ]; then
+            echo "has_notes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          # Check if any commit has a Gradient note
+          for COMMIT in $COMMITS; do
+            NOTE=$(git notes --ref refs/notes/gradient show "$COMMIT" 2>/dev/null || true)
+            if [ -n "$NOTE" ]; then
+              echo "has_notes=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          done
+          echo "has_notes=false" >> $GITHUB_OUTPUT
+
+      - name: Post Gradient review summary
+        if: steps.check.outputs.has_notes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+
+            const baseSha = context.payload.pull_request.base.sha;
+            const headSha = context.payload.pull_request.head.sha;
+            const prNumber = context.issue.number;
+
+            // Get all commits in the PR
+            const commitsOutput = execSync(
+              `git rev-list ${baseSha}..${headSha}`,
+              { encoding: 'utf8' }
+            ).trim().split('\n').filter(Boolean);
+
+            const lines = [];
+
+            for (const commit of commitsOutput) {
+              try {
+                const noteOutput = execSync(
+                  `git notes --ref refs/notes/gradient show ${commit}`,
+                  { encoding: 'utf8' }
+                ).trim();
+
+                if (!noteOutput) continue;
+
+                const artifact = JSON.parse(noteOutput);
+                const commitShort = commit.slice(0, 7);
+
+                for (const hunk of artifact.hunks) {
+                  const labels = hunk.facts.map(f => {
+                    const labelMap = {
+                      'file-read-before-edit': 'read before edit',
+                      'blind-edit': 'blind edit',
+                      'tested-after-edit': 'tested after edit',
+                      'unchecked-after-edit': 'unchecked',
+                      'searched-before-edit': 'searched',
+                      'rewritten': 'rewritten',
+                      'model-initiated': 'model-initiated',
+                      'requested': 'requested',
+                      'mechanical': 'mechanical',
+                      'new-file': 'new file'
+                    };
+                    return labelMap[f] ?? f;
+                  }).join(' · ');
+
+                  lines.push(`- \`${hunk.path}:${hunk.newRange.start}-${hunk.newRange.end}\` · ${commitShort} · ${labels}`);
+                }
+              } catch (e) {
+                // No note for this commit, skip
+              }
+            }
+
+            if (lines.length === 0) {
+              console.log('No Gradient annotations to post');
+              return;
+            }
+
+            console.log(`Posting ${lines.length} Gradient annotations on PR #${prNumber}`);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `## Gradient\n\n${lines.join('\n')}`
+            });

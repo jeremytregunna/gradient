@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { installHooks } from "../src/hooks.ts";
+import { handleHook, installHooks } from "../src/hooks.ts";
 
 test("installHooks installs repo-local hooks when global hooksPath is unusable", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gradient-hooks-"));
@@ -44,4 +44,18 @@ test("installHooks chains existing hooks instead of overwriting them", async () 
   assert.match(wrapper, /Installed by Gradient/);
   assert.match(wrapper, /pre-push\.gradient-prev/);
   assert.equal(previous, "#!/bin/sh\necho existing\n");
+});
+
+test("handleHook uses pre-push remote argument and logs non-fatal notes push failures", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gradient-hooks-push-"));
+  assert.equal(spawnSync("git", ["init"], { cwd }).status, 0);
+
+  await handleHook("pre-push", cwd, ["upstream"]);
+
+  const logs = await readdir(join(cwd, ".git", "gradient", "hooks"));
+  const failureLog = logs.find((name) => name.endsWith("pre-push-notes-fail.json"));
+  assert.ok(failureLog);
+
+  const body = await readFile(join(cwd, ".git", "gradient", "hooks", failureLog), "utf8");
+  assert.equal(JSON.parse(body).remote, "upstream");
 });
