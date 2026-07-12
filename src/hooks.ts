@@ -65,7 +65,11 @@ export async function handleHook(hook: string | undefined, cwd: string, hookArgs
 
   // post-commit: write the artifact as a git note (for local/offline review)
   if (hook === "post-commit" && artifact) {
-    const art = await readArtifact(artifact);
+    let art = await readArtifact(artifact);
+    // Write the note on the new HEAD, not the pre-commit HEAD stored in the artifact.
+    if (art.head !== head) {
+      art = { ...art, head };
+    }
     writeNote(art, cwd);
   }
 
