@@ -1,7 +1,7 @@
 import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { findArtifactForCommit, readArtifact, readArtifactIndex, storageDir, storageDirs } from "./storage.ts";
 import { writeNote } from "./notes.ts";
 
@@ -76,20 +76,19 @@ export async function handleHook(hook: string | undefined, cwd: string, hookArgs
   // pre-push: push notes ref so CI can read them
   if (hook === "pre-push") {
     const remote = hookArgs[0] ?? "origin";
-    const result = spawnSync(
-      "git",
-      ["push", remote, "refs/notes/gradient"],
-      { cwd, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
-    );
-    if (result.status !== 0) {
-      // Non-fatal — notes push shouldn't block the main push.
-      // Log it for debugging.
-      const errPath = join(gradientDir, "hooks", `${Date.now()}-pre-push-notes-fail.json`);
-      await writeFile(errPath, `${JSON.stringify({
-        hook, remote, stderr: result.stderr?.trim(), stdout: result.stdout?.trim(), time: new Date().toISOString()
-      }, null, 2)}\n`, "utf8");
-    }
+    pushNotesWithTimeout(remote, cwd);
   }
+}
+
+function pushNotesWithTimeout(remote: string, cwd: string): void {
+  // Non-blocking notes push — if this hangs (e.g. SSH auth, GitHub receive-pack
+  // stall on notes ref), the timeout in the shell wrapper kills it after 5s.
+  // We don't wait for the result; the hook must not block the main push.
+  spawn("sh", ["-c", `timeout 5 git push "$1" refs/notes/gradient 2>&1 || true`, "sh", remote], {
+    cwd,
+    detached: true,
+    stdio: "ignore",
+  }).unref();
 }
 
 function gitHooksDir(cwd: string): string | undefined {
@@ -191,7 +190,7 @@ fi
 
   return `#!/bin/sh
 # Installed by Gradient. Keep this hook small; all logic lives in the TypeScript CLI.
-${previousBlock}node --experimental-strip-types ${shellQuote(cliPath)} hook ${hook} "$@"
+${previousBlock}node --experimental-strip-types ${shellQuote(cliPath)} hook ${hook} "$@" || true
 `;
 }
 
