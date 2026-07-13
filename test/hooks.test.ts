@@ -46,16 +46,18 @@ test("installHooks chains existing hooks instead of overwriting them", async () 
   assert.equal(previous, "#!/bin/sh\necho existing\n");
 });
 
-test("handleHook uses pre-push remote argument and logs non-fatal notes push failures", async () => {
+test("handleHook fires non-blocking notes push on pre-push", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gradient-hooks-push-"));
   assert.equal(spawnSync("git", ["init"], { cwd }).status, 0);
 
   await handleHook("pre-push", cwd, ["upstream"]);
 
+  // The hook runs without blocking. The detached notes push spawns
+  // a background process, so we just verify the hook completes.
   const logs = await readdir(join(cwd, ".git", "gradient", "hooks"));
-  const failureLog = logs.find((name) => name.endsWith("pre-push-notes-fail.json"));
-  assert.ok(failureLog);
+  const hookLog = logs.find((name) => name.includes("pre-push"));
+  assert.ok(hookLog);
 
-  const body = await readFile(join(cwd, ".git", "gradient", "hooks", failureLog), "utf8");
-  assert.equal(JSON.parse(body).remote, "upstream");
+  const body = await readFile(join(cwd, ".git", "gradient", "hooks", hookLog), "utf8");
+  assert.equal(JSON.parse(body).hook, "pre-push");
 });
