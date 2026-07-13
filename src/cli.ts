@@ -9,7 +9,7 @@ import { handleHook, installHooks } from "./hooks.ts";
 import { renderAnnotatedUnifiedDiff, renderArtifact } from "./render.ts";
 import { findArtifactForCommit, readArtifact, readArtifactIndex, writeArtifact } from "./storage.ts";
 import { writeNote, readNote, pushNotes, fetchNotes } from "./notes.ts";
-import type { GradientEvent } from "./types.ts";
+import type { GradientEvent, GradientFact, GradientArtifact, HunkProjection } from "./types.ts";
 
 export async function main(argv: string[]): Promise<void> {
   const [command, ...args] = argv;
@@ -88,8 +88,26 @@ async function distillCommand(args: string[]): Promise<void> {
     throw new Error("distill requires --events <events.json> and --diff <diff.patch>");
   }
 
-  const events = JSON.parse(await readFile(eventsPath, "utf8")) as GradientEvent[];
-  const diff = parseUnifiedDiff(await readFile(diffPath, "utf8"));
+  let eventsText: string;
+  try {
+    eventsText = await readFile(eventsPath, "utf8");
+  } catch (err) {
+    throw new Error(`failed to read events file: ${eventsPath}${err instanceof Error ? ": " + err.message : ""}`);
+  }
+  let events: GradientEvent[];
+  try {
+    events = JSON.parse(eventsText);
+  } catch (err) {
+    throw new Error(`failed to parse events JSON: ${eventsPath}${err instanceof Error ? ": " + err.message : ""}`);
+  }
+
+  let diffText: string;
+  try {
+    diffText = await readFile(diffPath, "utf8");
+  } catch (err) {
+    throw new Error(`failed to read diff file: ${diffPath}${err instanceof Error ? ": " + err.message : ""}`);
+  }
+  const diff = parseUnifiedDiff(diffText);
   const artifact = distill(events, diff, { runId, base, head });
   const path = await writeArtifact(artifact);
   console.log(path);
@@ -109,7 +127,6 @@ async function showCommand(args: string[]): Promise<void> {
   const commit = resolveCommitish(input) ?? gitHead();
   if (!commit) throw new Error(`cannot resolve '${input}' as a commit`);
 
-  const { readNote } = await import("./notes.ts");
   let artifact = readNote(commit, process.cwd());
   if (!artifact) {
     const artifactPath = await findArtifactForCommit(commit);
@@ -124,7 +141,7 @@ async function annotateDiffCommand(args: string[]): Promise<void> {
   const diffPath = valueAfter(args, "--diff");
   const commitArg = valueAfter(args, "--commit");
 
-  let artifact;
+  let artifact: GradientArtifact | undefined;
   if (artifactPath) {
     artifact = await readArtifact(artifactPath);
   } else if (commitArg) {
@@ -141,6 +158,7 @@ async function annotateDiffCommand(args: string[]): Promise<void> {
   }
 
   if (!diffPath) throw new Error("annotate-diff requires --diff <diff.patch>");
+  if (!artifact) throw new Error("annotate-diff: no artifact found (check --artifact or --commit)");
   const diff = await readFile(diffPath, "utf8");
   console.log(renderAnnotatedUnifiedDiff(diff, artifact));
 }
@@ -167,8 +185,8 @@ async function logCommand(args: string[]): Promise<void> {
   const oneline = args.includes("--oneline");
   const json = args.includes("--json");
   const maxCount = valueAfter(args, "--max") ?? "20";
-  const factFilter = valueAfter(args, "--fact");
-  const noFact = valueAfter(args, "--no-fact");
+  const factFilter: GradientFact | undefined = valueAfter(args, "--fact") as GradientFact | undefined;
+  const noFact: GradientFact | undefined = valueAfter(args, "--no-fact") as GradientFact | undefined;
   const pathFilter = valueAfter(args, "--path");
   const runIdFilter = valueAfter(args, "--run");
   const sinceFilter = valueAfter(args, "--since");
@@ -187,7 +205,7 @@ async function logCommand(args: string[]): Promise<void> {
     return;
   }
 
-  const entries: Array<{ commit: string; artifact: any }> = [];
+  const entries: Array<{ commit: string; artifact: GradientArtifact }> = [];
 
   for (const commit of commits) {
     const artifact = readNote(commit, process.cwd());
@@ -197,17 +215,17 @@ async function logCommand(args: string[]): Promise<void> {
     let filteredHunks = artifact.hunks;
     if (factFilter) {
       filteredHunks = filteredHunks.filter(
-        (h: any) => h.facts && h.facts.includes(factFilter)
+        (h) => h.facts.includes(factFilter)
       );
     }
     if (noFact) {
       filteredHunks = filteredHunks.filter(
-        (h: any) => h.facts && !h.facts.includes(noFact)
+        (h) => !h.facts.includes(noFact)
       );
     }
     if (pathFilter) {
       filteredHunks = filteredHunks.filter(
-        (h: any) => h.path === pathFilter || h.path.startsWith(pathFilter)
+        (h) => h.path === pathFilter || h.path.startsWith(pathFilter)
       );
     }
     if (runIdFilter && artifact.runId !== runIdFilter) continue;
@@ -276,7 +294,6 @@ async function notesReadCommand(args: string[]): Promise<void> {
   if (!commit) throw new Error("notes-read requires a commit");
   const artifact = readNote(commit, process.cwd());
   if (!artifact) throw new Error(`no Gradient note found for ${commit}`);
-  const { renderArtifact } = await import("./render.ts");
   console.log(renderArtifact(artifact));
 }
 
@@ -334,7 +351,7 @@ Usage:
   gradient annotate-diff --commit sha --diff diff.patch
   gradient index
   gradient find [commit]
-  gradient log [--oneline] [--json] [--max N] [--fact F] [--path P] [--run R]
+  gradient log [--oneline] [--json] [--max N] [--fact F] [--no-fact F] [--path P] [--run R]
   gradient install-hooks
   gradient notes-write [--commit sha]
   gradient notes-read [commit]

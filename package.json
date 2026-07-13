@@ -3,21 +3,32 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.js",
   "bin": {
     "gradient": "./dist/cli.js"
   },
   "files": [
-    "dist/cli.js",
-    "dist/diff.js",
-    "dist/distill.js",
-    "dist/hooks.js",
-    "dist/notes.js",
-    "dist/render.js",
-    "dist/storage.js",
-    "dist/types.js",
+    "dist/*.js",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map",
     "README.md",
     "PRD.md",
     "examples"
+  ],
+  "description": "Project factual agent trace events onto Git diff hunks so reviewers can see where to spend attention.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/earendil-works/gradient.git"
+  },
+  "homepage": "https://github.com/earendil-works/gradient#readme",
+  "keywords": [
+    "git",
+    "ai-agent",
+    "code-review",
+    "diff-annotation",
+    "attention-gradient",
+    "git-notes"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",

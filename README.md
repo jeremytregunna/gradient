@@ -1,120 +1,111 @@
 # Gradient
 
-Gradient projects factual agent trace events onto Git diff hunks so reviewers can see where to spend attention.
+Gradient projects factual agent trace events onto Git diff hunks so reviewers know where to spend attention.
 
-This repository is currently a TypeScript prototype. It has no runtime dependencies.
+A machine-authored diff has no **attention gradient**. Every line looks equally plausible, equally smooth, equally unmarked. Gradient fixes this by attaching trace-attested facts to each hunk:
 
-Build and run the installable CLI locally:
+> `src/auth/session.ts:42-49 · model-initiated · blind edit · unchecked`
+
+This tells a reviewer: the model changed this on its own, without reading the file first, and didn't test afterward. That's exactly where to look.
+
+**Evidence, not testimony.** Gradient surfaces only facts the capture layer *observed*. Nothing the model could have written to make itself look good.
+
+## Quick start
 
 ```sh
-npm run build
-npm pack
-npm install -g ./gradient-0.1.0.tgz
+npm install -g gradient
 gradient --help
 ```
 
-During development, it can also run on Node's built-in TypeScript type stripping:
+Or during development:
 
 ```sh
 npm run demo
 ```
 
-Run CLI commands through npm:
+## Core workflow
 
-```sh
-npm run gradient -- --help
-npm run gradient -- demo
-```
-
-Install local Git hooks for a repository:
-
-```sh
-npm run gradient -- install-hooks
-```
-
-Distill a trace and diff:
-
-```sh
-npm run gradient -- distill --events events.json --diff diff.patch
-```
-
-Render a stored artifact:
-
-```sh
-npm run gradient -- show .git/gradient/artifacts/<artifact>.json
-```
-
-Annotate a unified diff directly:
-
-```sh
-npm run gradient -- annotate-diff --artifact .git/gradient/artifacts/<artifact>.json --diff diff.patch
-npm run gradient -- annotate-diff --commit HEAD --diff diff.patch
-```
-
-Inspect local metadata:
-
-```sh
-npm run gradient -- index
-npm run gradient -- find HEAD
-```
-
-### Git notes (pushed with your commits)
-
-After distilling, write the artifact as a git note so it travels with the repo:
-
-```sh
-npm run gradient -- notes-write          # write note on current HEAD
-npm run gradient -- notes-read HEAD      # read note from a commit
-npm run gradient -- notes-push           # push notes to origin
-npm run gradient -- notes-fetch          # fetch notes from origin
-npm run gradient -- log --oneline        # show Gradient facts in git log
-```
-
-With hooks installed, `post-commit` auto-writes notes and `pre-push` auto-pushes them.
-
-Receivers fetch with `git fetch origin refs/notes/gradient:refs/notes/gradient`.
-
-### CI workflow
-
-Copy `examples/ci-github-actions.yml` to `.github/workflows/gradient.yml`.
-The workflow reads notes from the PR head branch and posts inline comments
-like `model-initiated · blind edit · unchecked` on each flagged hunk.
-
-Core flow:
+1. **Capture** — an extension or hook records agent events (reads, writes, searches, test runs)
+2. **Distill** — `gradient distill` projects those events onto the diff hunks
+3. **Transport** — notes are written as Git notes (`refs/notes/gradient`) so they travel with the repo
+4. **Review** — `gradient log` shows the attention gradient on recent commits
 
 ```text
-trace events + unified diff
-  -> distill projected hunk facts
-  -> store as Git-scoped metadata
-  -> render with a local diff tool or upload for hosted review
+trace events + diff → distill → git notes → gradient log
 ```
 
-The Pi extension boundary is `src/pi-extension.ts`: feed it observed events plus the final unified diff, and it writes a Gradient artifact.
+## Commands
 
-Pi extension usage:
+```
+gradient distill           Distill events + diff into an artifact
+gradient show <commit>     Display an artifact for a commit
+gradient annotate-diff     Annotate a diff with Gradient facts
+gradient log               Show Gradient notes for recent commits
+gradient install-hooks     Install Git hooks (auto-write + auto-push)
+gradient notes-write       Write artifact as a Git note on HEAD
+gradient notes-read        Read and display a Git note
+gradient notes-push        Push notes ref to a remote
+gradient notes-fetch       Fetch notes ref from a remote
+gradient find <commit>     Find the artifact source for a commit
+gradient index             Show the artifact index as JSON
+gradient demo              Run a self-contained demo
+```
+
+Use `gradient <command> --help` for details.
+
+### Log filters
 
 ```sh
-pi -e /home/jtregunna/Projects/git-mms/src/gradient-pi.ts
+gradient log --fact blind-edit       # only hunks with blind-edit
+gradient log --no-fact blind-edit    # exclude hunks with blind-edit
+gradient log --path src/cli.ts       # only hunks in that file
+gradient log --run pi-mridf8u2       # only that run's artifacts
+gradient log --since 2026-07-01      # commits after this date
+gradient log --author John           # commits by this author
+gradient log --json                  # output as JSON
+gradient log --oneline               # one line per commit
 ```
 
-Inside Pi:
+## Git hooks
 
-```text
-/gradient-status
-/gradient-distill
+Install hooks for automatic notes management:
+
+```sh
+gradient install-hooks
 ```
 
-The extension captures Pi `tool_call`, `tool_execution_end`, `input`, and `agent_end` events. On agent end, if writes happened, it distills the current working tree diff into a Gradient artifact automatically. Manual distillation is available with `/gradient-distill`.
+- `post-commit` — writes the latest artifact as a Git note
+- `pre-push` — pushes the notes ref to the remote
 
-Current facts:
+Hooks chain to any existing hooks in the same directory.
 
-- `requested`
-- `model-initiated`
-- `mechanical`
-- `file-read-before-edit`
-- `blind-edit`
-- `new-file`
-- `searched-before-edit`
-- `tested-after-edit`
-- `unchecked-after-edit`
-- `rewritten`
+## CI workflow
+
+Copy `examples/ci-github-actions.yml` to `.github/workflows/gradient.yml`. The workflow reads notes from the PR head branch and posts a summary comment on the PR.
+
+## Pi extension
+
+```sh
+pi -e /path/to/gradient/src/gradient-pi.ts
+```
+
+The extension captures Pi `tool_call`, `tool_execution_end`, `input`, and `agent_end` events. On agent end, it distills the current working tree diff into a Gradient artifact automatically.
+
+Commands:
+- `/gradient-status` — show captured event counts
+- `/gradient-distill` — manual distillation
+
+## Facts
+
+| Fact | Meaning |
+| --- | --- |
+| `requested` | Explicitly mentioned in the user's request |
+| `model-initiated` | Model decided to change this on its own |
+| `mechanical` | Lockfile, import, formatting, generated code |
+| `file-read-before-edit` | File was read before editing |
+| `blind-edit` | File was edited without being read first |
+| `new-file` | Newly created file |
+| `searched-before-edit` | Searched for callers/symbols before editing |
+| `tested-after-edit` | Test/check command passed after edits |
+| `unchecked-after-edit` | No test/check command after edits |
+| `rewritten` | Hunk was rewritten 3+ times |
