@@ -13,7 +13,11 @@ This tells a reviewer: the model changed this on its own, without reading the fi
 ## Quick start
 
 ```sh
-npm install -g gradient
+git clone git@github.com:jeremytregunna/gradient.git
+cd gradient
+npm install
+npm run build
+npm link
 gradient --help
 ```
 
